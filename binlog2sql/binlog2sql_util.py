@@ -10,7 +10,10 @@ from pymysqlreplication.row_event import (
     DeleteRowsEvent,
 )
 from pymysqlreplication.event import QueryEvent, RotateEvent, FormatDescriptionEvent
+import ConfigParser
+import re
 
+CONFIGFILE = "binlog2sql.ini" 
 
 def is_valid_datetime(string):
     try:
@@ -72,6 +75,9 @@ def parse_args(args):
                            help='Generate insert sql without primary key if exists', default=False)
     parser.add_argument('-B', '--flashback', dest='flashback', action='store_true',
                            help='Flashback data to start_postition of start_file', default=False)
+     # config file
+    parser.add_argument('-f', '--config-file', dest='configFile', action='store_true', 
+                        help='define params in file "%s", command params first' % (CONFIGFILE), default=False)
     return parser
 
 def command_line_args(args):
@@ -81,6 +87,13 @@ def command_line_args(args):
     if args.help or needPrintHelp:
         parser.print_help()
         sys.exit(1)
+        
+    if args.configFile:
+        items = parse_config(CONFIGFILE)
+        print items
+        for key, value in items.iteritems():
+            setattr(args, key, value)
+            
     if not args.startFile:
         raise ValueError('Lack of parameter: startFile')
     if args.flashback and args.stopnever:
@@ -90,6 +103,50 @@ def command_line_args(args):
     if (args.startTime and not is_valid_datetime(args.startTime)) or (args.stopTime and not is_valid_datetime(args.stopTime)):
         raise ValueError('Incorrect datetime argument')
     return args
+
+
+class myconf(ConfigParser.ConfigParser):  
+    def __init__(self,defaults=None):  
+        ConfigParser.ConfigParser.__init__(self,defaults=None)
+    # 配置项区分大小写
+    def optionxform(self, optionstr):  
+        return optionstr
+    
+def chomp_config_item(src):
+    res = src.strip(' ')
+    if re.search("^'.*'$", res):
+        res = res.strip("'")
+    elif re.search("^\".*\"$", res):
+        res = res.strip('"')
+
+    return res
+
+def parse_config(configFile):
+    items = {}
+    
+    config = myconf()
+    config.readfp(open(configFile, 'r'))
+    
+    section_mysql = "mysql"
+    items["host"] = chomp_config_item(config.get(section_mysql, "host"))
+    items["port"] = config.getint(section_mysql, "port")
+    items["user"] = chomp_config_item(config.get(section_mysql, "user"))
+    items["password"] = chomp_config_item(config.get(section_mysql, "password"))
+    items["databases"] = chomp_config_item(config.get(section_mysql, "databases"))
+    items["tables"] = chomp_config_item(config.get(section_mysql, "tables"))
+
+    section_sql = "sql"
+    items["nopk"] = config.getboolean(section_sql, "nopk")
+    items["flashback"] = config.getboolean(section_sql, "flashback")
+       
+    section_binlog = "binlog"
+    items["startFile"] = chomp_config_item(config.get(section_binlog, "startFile"))
+    items["startPos"] = config.getint(section_binlog, "startPos")
+    items["startTime"] = chomp_config_item(config.get(section_binlog, "startTime"))
+    items["stopTime"] = chomp_config_item(config.get(section_binlog, "stopTime"))
+    items["stopnever"] = config.getboolean(section_binlog, "stopnever")
+      
+    return items
 
 
 def compare_items((k, v)):
