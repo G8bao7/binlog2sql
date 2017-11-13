@@ -12,6 +12,9 @@ from pymysqlreplication.row_event import (
 from pymysqlreplication.event import QueryEvent, RotateEvent, FormatDescriptionEvent
 from binlog2sql_util import command_line_args, concat_sql_from_binlogevent, create_unique_file, reversed_lines
 
+reload(sys)
+sys.setdefaultencoding('utf-8')
+
 class Binlog2sql(object):
 
     def __init__(self, connectionSettings, startFile=None, startPos=None, endFile=None, endPos=None, startTime=None,
